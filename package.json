@@ -1,0 +1,10 @@
+{
+  "name": "vercel-suibuff",
+  "version": "1.8.9",
+  "type": "module",
+  "private": true,
+  "description": "freebuff2api worker.js 的 Vercel 单文件部署版（原 Cloudflare Worker 改造）",
+  "engines": {
+    "node": ">=20"
+  }
+}
