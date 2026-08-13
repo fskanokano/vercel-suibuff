@@ -33,14 +33,39 @@
 
 > 🐛 踩坑记录：最初用 `api/[...all].js` catch-all 文件系统路由，实测只匹配 `/api/单段`（如 `/api/anything`），根级路径 `/healthz`、`/v1/*` 全部平台 404（`x-vercel-error: NOT_FOUND`）。务必使用 rewrites 方案。
 
+## 一键转换工具（tools/）
+
+把任意 Cloudflare Worker（`export default { fetch(request, env) }` 形态）转换为 Vercel 兼容格式，**业务逻辑零改动**，只做两处最小改动：
+
+1. `export default {` → `const __cfWorkerExport = {`（原对象原封不动）
+2. 文件末尾追加 Vercel 适配层：自动收集 `env.<NAME>` 引用生成 `envShim`（映射 `process.env.<NAME>`，变量名不变），并导出 `{ fetch(request) }` 形态供 Vercel 运行时识别
+
+```bash
+# Linux / macOS（脚本会自动检查 node）
+./tools/convert-worker.sh my-worker.js              # 生成 my-worker.vercel.js
+./tools/convert-worker.sh my-worker.js --verify     # 转换并验证导出形态
+
+# Windows
+convert-worker.bat my-worker.js
+```
+
+转换器也支持 `fetch: async function (req, env)`、`fetch: (req, env) =>` 等变体形态、模板字符串/注释中的花括号（括号配平器安全处理）、旧格式报错提示、防重复转换。
+
+> 转换后部署到 Vercel：把 `my-worker.vercel.js` 放入 `api/` 目录（或按仓库顶层 `vercel.json` 的 rewrites 方式路由），在项目 Settings → Environment Variables 配置同名环境变量。
+
 ## 文件结构
 
 ```
 ├── api/
-│   └── worker.js      ← 核心实现（改造后的单文件）
-├── vercel.json        ← rewrites 全量路由（唯一路由配置）
-├── package.json       ← type: module（worker.js 为 ESM）
-└── test-vercel.mjs    ← 本地模拟 Vercel 运行时验证脚本（node test-vercel.mjs）
+│   └── worker.js          ← 核心实现（改造后的单文件）
+├── tools/
+│   ├── worker2vercel.mjs  ← 转换器核心（node 实现，跨平台）
+│   ├── convert-worker.sh  ← Linux/macOS 一键脚本
+│   ├── convert-worker.bat ← Windows 一键脚本
+│   └── test-converted.mjs ← 转换结果功能验证脚本
+├── vercel.json            ← rewrites 全量路由（唯一路由配置）
+├── package.json           ← type: module（worker.js 为 ESM）
+└── test-vercel.mjs        ← 本地模拟 Vercel 运行时验证脚本（node test-vercel.mjs）
 ```
 
 ## 支持的 API
