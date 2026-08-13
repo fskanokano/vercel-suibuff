@@ -6,7 +6,7 @@
 
 1. **导入仓库**：在 [vercel.com/new](https://vercel.com/new) → Import Git Repository 选择本仓库（Framework Preset 选 **Other**），Deploy。
 2. **配置环境变量**：项目 Settings → Environment Variables，按下方表格添加。
-3. **使用**：Base URL 填 `https://你的项目名.vercel.app/v1`，API Key 填 `API_KEY` 的值。
+3. **使用**：Base URL 填 `https://你的项目名.vercel.app/v1`，API Key 填 `API_KEY` 的值（未配置则用 `freebuff-default-key`）。
 
 > 部署后访问 `https://你的项目名.vercel.app/healthz` 验证（无需 API key）：
 > ```json
@@ -22,21 +22,25 @@
 | `FREEBUFF_API_KEY` | 可选 | `API_KEY` 的别名，两者取其一 |
 | `FREEBUFF_DEBUG` | 可选 | 设为 `"true"` 开启调试日志 |
 
+> ⚠️ 配置了 `API_KEY`/`FREEBUFF_API_KEY` 后，访问时必须使用你配置的值，默认 `freebuff-default-key` 会失效（401）。
+
 ## 适配原理（最小改动）
 
 - 原 `worker.js` 是 Cloudflare Worker 格式 `export default { fetch(request, env) }`。
 - **Vercel 的 Node 运行时（@vercel/node ≥ 5）原生识别该形态**：导出的对象带 `fetch` 方法时，自动把 Node `IncomingMessage` 桥接成标准 Web `Request` 调用 `fetch(request)`，并把返回的 Web `Response` 流式写回 —— SSE / 流式响应无损。
 - 唯一差异：CF 由平台注入 `env`，Vercel 调用 `fetch` 只传 `request`。因此文件末尾新增了 **env 适配层**，用 `process.env` 构造等价的 `envShim`（变量名不变，见上方表格）。
-- 路由：`api/[...all].js`（catch-all 文件系统路由）把**所有路径原样**交给 `worker.js`，避免 rewrites 改写 URL 导致内部路由失效。
+- 路由：`vercel.json` 中 `rewrites: [{"source": "/(.*)", "destination": "/api/worker"}]` 全量转发。**实测（2026-08-13）Vercel rewrite 到函数时保留原始 URL**（`/healthz`、`/v1/*`、query 参数均原样到达），worker 内部路由正常工作。
+
+> 🐛 踩坑记录：最初用 `api/[...all].js` catch-all 文件系统路由，实测只匹配 `/api/单段`（如 `/api/anything`），根级路径 `/healthz`、`/v1/*` 全部平台 404（`x-vercel-error: NOT_FOUND`）。务必使用 rewrites 方案。
 
 ## 文件结构
 
 ```
 ├── api/
-│   ├── worker.js      ← 核心实现（改造后的单文件）
-│   └── [...all].js    ← 3 行 catch-all 路由入口
+│   └── worker.js      ← 核心实现（改造后的单文件）
+├── vercel.json        ← rewrites 全量路由（唯一路由配置）
 ├── package.json       ← type: module（worker.js 为 ESM）
-└── README.md
+└── test-vercel.mjs    ← 本地模拟 Vercel 运行时验证脚本（node test-vercel.mjs）
 ```
 
 ## 支持的 API
